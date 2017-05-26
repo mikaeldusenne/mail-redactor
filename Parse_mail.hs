@@ -7,61 +7,77 @@ import qualified Data.ByteString.Char8 as Ch8 (pack, unpack)
 import qualified Codec.MIME.QuotedPrintable as QP (encode, decode)
 
 import Data.List
+
 import List hiding (toLower)
+import Tuple
+
 import System.IO
 import Text.Regex.PCRE
 
 -- 
-type Mail_header = [String]
+type Mail_header = (String, String) -- title, content
 
-data Mail_content = MC { getH :: [Mail_header],
-                         getContent :: [Mail_content]
-                       }
-                    | Mail_Leaf [String]
 
-instance Show Mail_content where
-  show (MC { getH = h, getContent = b}) = (unlines . (++[]) . map (notrailingln . unlines) $ h) ++ (unlines . map show) b
+-- data Mail = Mail { getH :: [Mail_header],
+--                    getContent :: [Mail]
+--                  }
+--           | Mail_Leaf [String]
+--           | DummyMail
+
+data Mail = Mail { getH :: [Mail_Header],
+                   getContent :: Mail_body}
+
+data Mail_body = Mail_Leaf [String]
+               | Mail_multipart { getBoundary :: String,
+                                  getParts    :: [Mail]}
+               | DummyMail
+
+show_header h = fst h ++ ": " ++ snd h
+
+instance Show Mail where
+  show (Mail { getH = h, getContent = b}) = (unlines . (++[""]) . intercal "§§" . map (notrailingln . show_header) $ h) ++ (unlines . map show) b
   show (Mail_Leaf l) = unlines l
+  show DummyMail = "<Dummy Mail>"
 
-isMultipartDeclaration = isInfixOf "content-type: multipart" . map toLower
+-- isMultipartDeclaration = isInfixOf "content-type: multipart" . map toLower
+isMultipartDeclaration (ht,hv) = (&&) (isInfixOf "content-type" ht) (isInfixOf "multipart" hv)
 
-findHeader :: String -> [[String]] -> Maybe [String]
--- findHeader _ _ = Nothing
--- findHeader _ [[]] = Nothing
-findHeader h l  = safe_head . grp $ l
-  where grp = filter (and . ([(>0).count, isInfixOf h . head]<*>) . pure) 
-        
+-- from a list of headers, find the first one beginning with <String>
+findHeader :: String -> [Mail_header] -> Maybe Mail_header
+-- findHeader h l  = safe_head . grp $ l
+--   where grp = filter (and . ([(>0).count, isInfixOf h . head]<*>) . pure) 
+findHeader h l = fst <$> separateHeader h l
+
+-- header_title_corresponds s = isPrefixOf s . fst
+header_value_correspond s = isPrefixOf (sanitize s) . sanitize 
+header_corresponds (st,sv) (ht, hv) = mail_header_title_correspond st ht && header_value_correspond sv hv
+-- header_corresponds t1 t2 = uncurry (&&) $ zipTuplesWith mail_header_title_correspond t1 t2
+
+-- find a header title <h> in a list of headers and returns ( <found header> , <rest of header list> )
+separateHeader h = separate ((==h) . map toLower . fst)
+  
+readMail :: [String] -> Mail
+readMail l = Mail {getH = h,
+                   getContent = b}
+  where (h',b') = sliceOn [] l
+        h = readHeaders h'
+        multih = fst <$> separate (header_corresponds ("content-type","multipart")) h
+        b = case multih of (Just mh) -> readMultipartContent (show_header mh) b'
+                           Nothing -> [Mail_Leaf b']
 
 
-readMail :: [String] -> Mail_content
-readMail l = MC {getH = h,
-                 getContent = b}
-   where (h',b') = sliceOn [] l
-         h = readHeaders h'
-         multih = findHeader "content-type: multipart" h
-         b = case multih of (Just []) -> error "wtf"
-                            (Just mh) -> readMultipartContent (head mh) b'
-                            Nothing -> [Mail_Leaf b']
+readHeaders :: [String] -> [Mail_header]
+readHeaders = map (\(Just e) -> e) . filter (/=Nothing) . map readHeader . spansplit isHeader
 
--- todo use fold
-readHeaders :: [String] -> [Mail_header] -- a.k.a. [[String]]
-readHeaders = spansplit isHeader
-
--- readHeaders :: [String] -> [Mail_header] -- a.k.a. [[String]]
--- readHeaders = rh []
---   where rh acc [] = acc
---         rh [] (l:ls) = rh [[l]] ls
---         rh acc@(a:as) (l:ls) | isHeader l = rh (acc++[[l]]) ls
---                              | otherwise  = rh ((a++[l]):as) ls
-
+readHeader :: [String] -> Maybe Mail_header
+readHeader hl = (\(a,b) -> (a,tail b)) <$> (safe_sliceOn ':' . unlines $ hl)
 
 splitHeader = safe_sliceOn ':'
 
 isHeader :: String -> Bool
--- isHeader = and . ([(/=Nothing),()] . pure) . sa
 isHeader = (/=Nothing) . splitHeader
           
-readMultipartContent :: String -> [String] -> [Mail_content]
+readMultipartContent :: String -> [String] -> [Mail]
 readMultipartContent declaration content = map readMail $ readMultiparts content
   where Just (content_type,boundary) = readMultipartDeclaration declaration
         readMultiparts = map (filter (/=closeboundary boundary)) . splitOn (==boundary)
@@ -71,9 +87,9 @@ closeboundary = (++"--") . openboundary
 
 readMultipartDeclaration :: String -> Maybe (String, String) -- type, boundary
 readMultipartDeclaration = r . prepare
-  where prepare = words . map toLower . replace '=' ' '
+  where prepare = words . map toLower . replace ';' ' ' . replace '=' ' '
         r ("content-type:":c:"boundary":b:[]) = Just (c,filter (/='"') b)
-        r _ = Nothing
+        r e = Nothing --error $ "failed to parse "++(show e)
                       
 
 
@@ -107,7 +123,6 @@ readMultipartDeclaration = r . prepare
 ---- utils ----
 
 toLowerStr = map toLower
-
 
 -- take the headers of a mail
 -- i.e. take the lines until we see a line starting with "content-type:"
@@ -196,43 +211,34 @@ lineIsHeader = (=~"^[a-zA-Z0-9\\-]+:")
 --              . (++(map concat [references])) . map (concatWith (","))
 --              $ [to,cc,from,inreplyto]
 
+mail_header_title_correspond t1 t2 = allSame . map sanitize $ [t1,t2]
+
+sanitize = map toLower . trim
+
+trim = trimBeg . reverse . trimBeg . reverse
+  where trimBeg = dropWhile isSpace
+        
+
+-- TODO THAT
+-- todo lenses?
+changeHeader :: String -> String -> [Mail_header] -> [Mail_header]
+changeHeader title value [] = []
+changeHeader title value (h@(ht,hv):hs)
+  | mail_header_title_correspond title ht = (ht,value):hs
+  | otherwise   = (h:) $ changeHeader title value hs
+
+
+answer_to_mail :: Mail -> Mail
+answer_to_mail (Mail { getH = h, getContent = b }) = Mail { getH = h', getContent = b' }
+  where h' = changeHeader "to" "lol <mikaeldusenne@gmail.com>" h
+        b' = b
+        
+        
 
 main = do
   l <- lines <$> readFile "mail_original.txt"
-  putStrLn . show $ readMail l
---   -- putStrLn $ parseComma " \"GILLIBERT, Andre\" <Andre.Gillibert@chu-rouen.fr>, mikaeldusenne@gmail.com"
-  
---   -- mail_headers <- lines.(map toLower) <$> readFile "mail_headers.txt"
---   s <- takeHeaders.lines <$> getContents
-
---   -- writeFile "body" . unlines . takeBody $ s
-
---   hPutStrLn stderr . unlines $ s
---   hPutStrLn stderr "-----------------"
---   let parsedHeaders = parseHeaders s
---       parse_pointy h = parsePointyBrackets . selectHeader h $ parsedHeaders
---       parse_comma h = parseComma . selectHeader h $ parsedHeaders
---   -- let areHeaders = map lineIsHeader $ s 
---   -- hPutStrLn stderr $ unlines $ zipWith (\a -> \b -> show a ++ "\t" ++ show b) (map lineIsHeader s) s
-
---   -- putStrLn . unlines . map ((++"\n").show) $ parseHeaders s
-           
--- --  putStrLn . show . parsePointyBrackets $ selectHeader "cc" parsedHeaders
---   let to = [selectHeader "from" parsedHeaders]
---       original_to_cc = parse_comma "to" ++ parse_comma "cc"
---       cc = filter (not . isInfixOf "mikaeldusenne") $ original_to_cc
---       from = filter (isInfixOf "mikaeldusenne") $ original_to_cc
-
---       subject = (" Réponse: "++) $ selectHeader "subject" parsedHeaders
+  let m@Mail{getH = h, getContent = c} = answer_to_mail $ readMail l
       
---       inreplyto = [selectHeader "message-id" parsedHeaders]
---       references = [selectHeader "references" parsedHeaders] ++ inreplyto
--- --  -- debug
--- --  print "(((((((("
--- --  print $ parseHeaders ["To: <Mikaeldusenne>","In-Reply-To: someone" ]
--- --  print "))))))))"
--- --  hPutStrLn stderr $ show original_to_cc
---   putStr . unlines . zipWith (++) ["To:","Cc:","From:","In-Reply-To:","References:","Subject:"]
---     . (++ [subject])
---     . (++(map concat [references])) . map (concatWith (",")) $ [to,cc,from,inreplyto]
-
+  putStrLn . show $ m
+  print "ok"
+  
