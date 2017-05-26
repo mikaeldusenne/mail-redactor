@@ -1,0 +1,6 @@
+*.h[io]
+*.o
+\#*\#
+mail_original.txt
+redacted_mail.txt
+headers
