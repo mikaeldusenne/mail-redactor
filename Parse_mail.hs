@@ -15,7 +15,7 @@ import System.IO
 import Text.Regex.PCRE
 
 -- 
-type Mail_header = (String, String) -- title, content
+
 
 
 -- data Mail = Mail { getH :: [Mail_header],
@@ -24,8 +24,10 @@ type Mail_header = (String, String) -- title, content
 --           | Mail_Leaf [String]
 --           | DummyMail
 
-data Mail = Mail { getH :: [Mail_Header],
+data Mail = Mail { getH :: [Mail_header],
                    getContent :: Mail_body}
+
+type Mail_header = (String, String) -- title, content -- TODO as a proper data
 
 data Mail_body = Mail_Leaf [String]
                | Mail_multipart { getBoundary :: String,
@@ -34,11 +36,18 @@ data Mail_body = Mail_Leaf [String]
 
 show_header h = fst h ++ ": " ++ snd h
 
-instance Show Mail where
-  show (Mail { getH = h, getContent = b}) = (unlines . (++[""]) . intercal "§§" . map (notrailingln . show_header) $ h) ++ (unlines . map show) b
-  show (Mail_Leaf l) = unlines l
-  show DummyMail = "<Dummy Mail>"
+-- todo rm notrailingln??
+show_headers = unlines . (++[""]) . map (notrailingln . show_header)
 
+instance Show Mail where
+  show (Mail { getH = h, getContent = b}) = show_headers h ++ show b
+
+instance Show Mail_body where
+  show (Mail_Leaf l) = unlines l
+  show DummyMail     = "<Dummy Mail>"
+  show (Mail_multipart {getBoundary = b, getParts = parts}) = unlines $
+    beforeEach (openboundary b) (map show parts) ++ [closeboundary b]
+  
 -- isMultipartDeclaration = isInfixOf "content-type: multipart" . map toLower
 isMultipartDeclaration (ht,hv) = (&&) (isInfixOf "content-type" ht) (isInfixOf "multipart" hv)
 
@@ -62,9 +71,23 @@ readMail l = Mail {getH = h,
   where (h',b') = sliceOn [] l
         h = readHeaders h'
         multih = fst <$> separate (header_corresponds ("content-type","multipart")) h
-        b = case multih of (Just mh) -> readMultipartContent (show_header mh) b'
-                           Nothing -> [Mail_Leaf b']
+        ct = Nothing
+        cte = findHeader "content-transfer-encoding"
+        b = case multih of (Just mh) -> readMultipartContent mh b'
+                           Nothing -> Mail_Leaf b'
 
+readMultipartContent :: Mail_header -> [String] -> Mail_body
+readMultipartContent declaration content = Mail_multipart {getBoundary = boundary ,
+                                                           getParts = map readMail . readMultiparts $ content}
+  where Just (content_type,boundary) = readMultipartDeclaration declaration
+        readMultiparts = map (filter (/=closeboundary boundary)) . splitOn (==openboundary boundary)
+
+readMultipartDeclaration :: Mail_header -> Maybe (String, String) -- type, boundary
+readMultipartDeclaration = r . prepare . snd
+  where prepare = words . replace ';' ' ' . replace '=' ' '
+        r (c:boundary:b:[]) | map toLower boundary == "boundary" = Just (c,filter (/='"') b)
+                            | otherwise = Nothing
+        r e = Nothing --error $ "failed to parse "++(show e)
 
 readHeaders :: [String] -> [Mail_header]
 readHeaders = map (\(Just e) -> e) . filter (/=Nothing) . map readHeader . spansplit isHeader
@@ -76,21 +99,11 @@ splitHeader = safe_sliceOn ':'
 
 isHeader :: String -> Bool
 isHeader = (/=Nothing) . splitHeader
-          
-readMultipartContent :: String -> [String] -> [Mail]
-readMultipartContent declaration content = map readMail $ readMultiparts content
-  where Just (content_type,boundary) = readMultipartDeclaration declaration
-        readMultiparts = map (filter (/=closeboundary boundary)) . splitOn (==boundary)
 
 openboundary = ("--"++)
 closeboundary = (++"--") . openboundary
 
-readMultipartDeclaration :: String -> Maybe (String, String) -- type, boundary
-readMultipartDeclaration = r . prepare
-  where prepare = words . map toLower . replace ';' ' ' . replace '=' ' '
-        r ("content-type:":c:"boundary":b:[]) = Just (c,filter (/='"') b)
-        r e = Nothing --error $ "failed to parse "++(show e)
-                      
+
 
 
 -- To: "Somebody" <somebody@email.com>                                          : main headers
@@ -219,7 +232,6 @@ trim = trimBeg . reverse . trimBeg . reverse
   where trimBeg = dropWhile isSpace
         
 
--- TODO THAT
 -- todo lenses?
 changeHeader :: String -> String -> [Mail_header] -> [Mail_header]
 changeHeader title value [] = []
@@ -229,14 +241,26 @@ changeHeader title value (h@(ht,hv):hs)
 
 
 answer_to_mail :: Mail -> Mail
-answer_to_mail (Mail { getH = h, getContent = b }) = Mail { getH = h', getContent = b' }
-  where h' = changeHeader "to" "lol <mikaeldusenne@gmail.com>" h
+answer_to_mail (Mail { getH = h, getContent = b }) = Mail { getH = newheaders, getContent = b' }
+  where getval (Just e) = snd e
+        findval = getval . (flip findHeader) h
+        oldfrom = findval "from"
+        oldto = findval "to"
+        newheaders = [("from",oldto),("to",oldfrom)]
+
+        map duplicate ["cc",""]
+        [("from","to"),("to","from")]
+        
+        -- h'' = changeHeader "from" . getval . findHeader "to" $ h
+        -- h' = changeHeader "to" oldfrom h
         b' = b
         
         
 
 main = do
-  l <- lines <$> readFile "mail_original.txt"
+  l <- lines <$> readFile "mail_gmail_fabien_2"
+  putStrLn . unlines $ l
+  putStrLn "\n\n"++take 29 (repeat "§")++"\n"
   let m@Mail{getH = h, getContent = c} = answer_to_mail $ readMail l
       
   putStrLn . show $ m
