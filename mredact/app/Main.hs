@@ -1,16 +1,22 @@
-module Convert_markdown where
+module Main where
 
 import System.Process
 import System.IO
 
 import List
 import Text.Regex.PCRE
-
+import General (alpha_num)
 import Text.Pandoc
 
 import Text.Pandoc.Readers.Markdown 
 import Text.Pandoc.Writers.HTML
 import Text.Pandoc.Walk
+import Skylighting
+import System.Random (randomIO)
+
+import qualified Data.Map.Strict as M
+
+-- import Text.Pandoc.Highlighting
 
 -- class Bounded a where
 --   getBoundary :: String
@@ -43,7 +49,7 @@ import Text.Pandoc.Walk
 
 getFileMimeType path_to_file = ((\(_,Just out,_,_)->out) <$> createProcess (proc "file" ["--mime-type",path_to_file]){std_out = CreatePipe})
   >>= ((extract<$>) <$> hGetContents)
-  where extract (':':' ':xs) = notrailingnl xs
+  where extract (':':' ':xs) = notrailingln xs
         extract (x:xs) = extract xs
         
 --  where cmd = "file --mime-type ~/Documents/random/lambda.png | sed 's/^.*: \\(.*\\)$/\1/'"
@@ -68,26 +74,57 @@ encode_base64 path_to_file = (\(_,Just r,_,_) -> r) <$> createProcess (proc "bas
 
 pandoc html = html
 
-createMultiparts ls = f ls [] [] []
-  where f [] html plain attachments = (pandoc html, plain, attachments)
-        f (('§':xs):ls) h p a = f ls (h++[htmla]) (p++[plaina]) (a++[atta])
-          where htmla="<img src=\"cid:" ++ xs ++ "\" alt=\"image html\">"
-                plaina = "[image: " ++ xs ++ " ]"
-                atta=((("Content-Type: "++) . (++";"))
-                       <$>getFileMimeType xs)
-                     >>= (\ mime -> ((++)(mime ++ " name=\"" ++ xs ++ "\"\n"
-                                          ++ "Content-Disposition: inline; filename=\"" ++ xs ++ "\"\n"
-                                          ++ "Content-Transfer-Encoding: base64\n"
-                                          ++ "Content-ID: <" ++ xs ++ ">\n"
-                                          ++ "X-Attachment-Id: <" ++ xs ++ ">\n\n"))
-                                    <$> encode_base64 xs)
---                  return mime++content
+-- createMultiparts ls = f ls [] [] []
+--   where f [] html plain attachments = (pandoc html, plain, attachments)
+--         f (('§':xs):ls) h p a = f ls (h++[htmla]) (p++[plaina]) (a++[atta])
+--           where htmla="<img src=\"cid:" ++ xs ++ "\" alt=\"image html\">"
+--                 plaina = "[image: " ++ xs ++ " ]"
+--                 atta=((("Content-Type: "++) . (++";"))
+--                        <$>getFileMimeType xs)
+--                      >>= (\ mime -> ((++)(mime ++ " name=\"" ++ xs ++ "\"\n"
+--                                           ++ "Content-Disposition: inline; filename=\"" ++ xs ++ "\"\n"
+--                                           ++ "Content-Transfer-Encoding: base64\n"
+--                                           ++ "Content-ID: <" ++ xs ++ ">\n"
+--                                           ++ "X-Attachment-Id: <" ++ xs ++ ">\n\n"))
+--                                     <$> encode_base64 xs)
+--         f (l:ls) h p a = f ls (h++[l]) (p++[l]) a
 
+
+
+createMultiparts :: [String] -> IO ([String], [String] ,[String])
+createMultiparts ls = f ls [] [] []
+  where f [] html plain attachments = return (pandoc html, plain, attachments)
+        f (('§':xs):ls) h p a = do
+          mimeType <- getFileMimeType xs
+          b64 <- encode_base64 xs
+          -- print mimeType
+          id <- show <$> (randomIO :: IO Integer)
+          -- print id
+          let is_image = beginWith "image" mimeType
+          let htmla=if is_image
+                    then "<img src=\"cid:" ++ id ++ "\" alt=\"image"++ id ++"\">"
+                    else ""
+              plaina = "["++mimeType++": " ++ id ++ " ]"
+              disposition = if is_image then "inline" else "attachment"
+              atta = ((("Content-Type: "++) . (++";")) $ mimeType)
+                ++ " name=\"" ++ xs ++ "\"\n"
+                ++ "Content-Disposition: "++disposition++"; filename=\"" ++ xs ++ "\"\n"
+                ++ "Content-Transfer-Encoding: base64\n"
+                ++ "Content-ID: <" ++ id ++ ">\n"
+                ++ "X-Attachment-Id: <" ++ id ++ ">\n\n"
+                ++ b64
+          f ls (h++[htmla]) (p++[plaina]) (a++[atta])
+
+                -- return mime++content
+        f (l:ls) h p a = f ls (h++[l]) (p++[l]) a
 -- (++) . sequence $
 --                      [,
 --                       ]
-        f (l:ls) h p a = f ls (h++[l]) (p++[l]) a
 --          | l =~ "!\[[^\]]*\]"
+
+
+
+insertBeforeEach e = concatMap (\a -> [e, a])
 
 createAlternative html plain = unlines ["Content-Type: multipart/alternative; boundary=" ++ alternativeBound
                                        ,""
@@ -120,19 +157,22 @@ createRelated html plain attachts = unlines ["Content-Type: multipart/related; b
 createAttachment a = a
         
 
+
+
+
 main = do
   ls <- lines <$> getContents
   css <- readFile "/home/mika/.perso/pandoc.css" -- "pandoc.css"
   -- r <- encode_base64 "/home/mika/Documents/random/lambda.png"
-  let (h, p, a) = createMultiparts ls
-  attachments <- sequence a
+  -- let (h, p, a) = createMultiparts ls
+  -- attachments <- sequence a
+  (h, p, attachments) <- createMultiparts ls
   let md_str = unlines h
       plain = unlines p
-      (Right pandoc) = walk pandocWalker <$>
-                       readMarkdown
+      (Right pandoc) = readMarkdown
                        (def {readerStandalone = True})
                        md_str
-      body_html_str = writeHtmlString def pandoc
+      body_html_str = writeHtmlString (def {writerHighlightStyle = pygments}) pandoc
       html_str = unlines ["<!DOCTYPE html><html><head>",
                           "<meta charset=\"UTF-8\">",
                           "<style>",
@@ -141,7 +181,7 @@ main = do
                           body_html_str,
                           "</body></html>"]
                           
-  
+  writeFile "/home/mika/tmp/mail_body.txt" body_html_str
   putStrLn $  createRelated html_str plain attachments
 
 

@@ -3,6 +3,9 @@ import List
 import Tuple
 import Data.Char
 
+surroundWith s = (s++) . (++s)
+surroundcomment = surroundWith . ('(':) . (++")")
+
 crlf = map chr [13, 10]
 alpha = ['a'..'z'] ++ ['A'..'Z']
 num = ['0'..'9']
@@ -53,7 +56,7 @@ data Header = Header{ header'name::Header_name,
                       header'body::Header_body}
 
 data Header_name = HN String
-data Header_body = HB String
+data Header_body = HB_mailbox Mailbox | HB_mailboxlist MailboxList | HB_unstructured String
 
 -- SHOW
 
@@ -81,14 +84,16 @@ instance Show Name_address where
 --   show (
 
 instance Show Header where
-  show (Header {header'name=n, header'body=b}) = show n++": " ++ show b
+  show (Header {header'name=n, header'body=b}) = surroundcomment "h" $ show n++": " ++ show b
 
 instance Show Header_name where
   show (HN s) = s
 
 instance Show Header_body where
-  show (HB s) = s
-
+  show (HB_unstructured s) = surroundcomment "~" s
+  show (HB_mailbox s) = surroundcomment "." $ show s
+  show (HB_mailboxlist s) = surroundcomment "|" $ show s
+  
 instance Show Mailbox where
   show (MA a) = show a
   show (MN a) = show a
@@ -160,12 +165,22 @@ instance Read Mailbox where
   --   where f t = [(t a,xs) | (a,xs) <- readsPrec k r]
 
 instance Read MailboxList where
-  readsPrec k r = [(MBL l,xs)]
-    where (l,xs) = f [] r
-          f acc s = case c of ',' -> f (a:acc) s''
-                              _   -> (reverse (a:acc), s')
-            where [(a, s')] = readsPrec (k+1) s
-                  (c:s'') = trimwsp s'
+  readsPrec k r = case ans of [] -> []
+                              [(h@(a:as),xs)] -> [(MBL h,xs)]
+    where ans = f [] r
+          f acc s = case mb of [(a,s')] -> case c of ',' -> f (a:acc) s''
+                                                     _   -> [(reverse (a:acc), s')]
+                               [] -> []
+            where mb = readsPrec (k+1) s
+                  (c:s'') = trimwsp . snd . head $ mb
+                  
+-- instance Read MailboxList where
+--   readsPrec k r = [(MBL l,xs)]
+--     where (l,xs) = f [] r
+--           f acc s = case c of ',' -> f (a:acc) s''
+--                               _   -> (reverse (a:acc), s')
+--             where [(a, s')] = readsPrec (k+1) s
+--                   (c:s'') = trimwsp s'
                   
 
 
@@ -181,16 +196,35 @@ instance Read Header_name where
     where headerCharset = map chr . except [58] $ [33..126]
           (n,xs) = span (`elem`headerCharset) r 
 
+perhapsConstruct c e = case e of [] -> []
+                                 [(a, xs)] -> [(c a, xs)]
+
+isHeaderBeginning s = (not.isEmpty$hn) && ((==':').head$xs) 
+  where hn = (reads :: ReadS Header_name) s
+        [(_,xs)] = hn
+
 instance Read Header_body where
-  readsPrec _ r = [(HB b, xs)]
-    where (b,xs) = sliceCRLF r
+  readsPrec _ r = if (not.isEmpty$hbtok) then hbtok else hb_unstructured
+    where hbmb = (\[(mb,xs)] -> [(HB_mailbox mb,xs)]) . reads $ r
+          hbmbl = perhapsConstruct HB_mailboxlist . reads $ r
+          hbtok = hbmbl
+          hb_unstructured = perhapsConstruct HB_unstructured . (:[]) . applyToTuple (concatWith "\r\n") . span (not.isHeaderBeginning)
+            . splitWhen "\r\n" $ r
+          -- hb_unstructured = (\(s,xs) -> [(HB_unstructured . (s++) $ hbu xs "",xs)]) . sliceCRLF $ r
+          
+          -- hbu s acc = if (isEmpty $ (reads :: ReadS Header_name)) && (not . isEmpty l)  s -- new header or end of headers
+          --             then hbu ls (acc ++ "\r\n" ++ l)
+          --             else (acc,s)
+          --   where (l,ls) = sliceCRLF s
+--    (b,xs) = sliceCRLF r
 
 read_headers :: String -> [([Header],String)]
 read_headers s = r s []
-  where r [] acc = [(acc :: [Header],"")]
-        r s acc = case r' of []           -> [(acc, s)]
-                             [(h@(Header _ _),s')] -> r s' (h:acc)
-          where r' = reads s :: [(Header,String)]
+  where r [] acc = [(reverse acc,"")]
+        r s acc = case r' of []           -> [(reverse acc, s)]
+                             [(Header a b,s')] -> r s' ((Header a b):acc)
+                             l@(x:xs) -> error $ "\n\nàààààààààà\n\n" ++ show x ++ "\n\nooo\n\n" ++ show xs
+          where r' = (reads::ReadS Header) . trimwsp $ s
 
 sliceCRLF = s ""
   where s acc "" = (reverse acc,"")
@@ -198,8 +232,16 @@ sliceCRLF = s ""
         s acc (x:xs) = s (x:acc) xs
 
 main = do
-  let hn = HN "From"
-      hb = HB "mikaeldusenne@gmail.com"
-      h = Header hn hb
-      h' = read "From: mikaeldusenne@gmail.com" :: Header
-  putStrLn . show $ h'
+  -- let hn = HN "From"
+  --     hb = HB "mikaeldusenne@gmail.com"
+  --     h = Header hn hb
+  --     h' = read "From: mikaeldusenne@gmail.com" :: Header
+  -- putStrLn . show $ h'
+  m <- readFile "mail_test_anne_gribouval_forheadertesr_bis.txt"
+  print m
+  putStr $ surroundWith "\n\n" "-------------------------------------------------------------"
+  let (h,b) =  head $ read_headers m
+      
+  putStrLn . concatWith "\n\n====\n\n" . map show $ h
+  putStrLn $ "\n\n++++++++\n\n" ++ b
+  
