@@ -42,6 +42,7 @@ executables:
     - skylighting
     - random
     - containers
+    - directory
 tests:
   mredact-test:
     main:                Spec.hs
