@@ -2,6 +2,8 @@ module Main where
 
 import qualified Data.Set as Set
 
+import Smiley
+
 import System.Process
 import System.IO
 import System.Directory
@@ -92,7 +94,7 @@ createRelated html plain attachts = unlines ["Content-Type: multipart/related; b
         relatedBoundaryline add = "--" ++ relatedBoundary ++ add
 
 main = do
-  ls <- lines <$> getContents
+  ls <- lines <$> (getContents >>= substitute_smileys)
   css <- readFile "/home/mika/.perso/pandoc.css" -- "pandoc.css"
   -- r <- encode_base64 "/home/mika/Documents/random/lambda.png"
   -- let (h, p, a) = createMultiparts ls

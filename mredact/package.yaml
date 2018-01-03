@@ -23,6 +23,17 @@ dependencies:
 
 library:
   source-dirs: src
+  dependencies:
+    - hlib
+    - process
+    - regex-pcre
+    - pandoc
+    - pandoc-types
+    - skylighting
+    - random
+    - containers
+    - directory
+    - regex-compat
 
 executables:
   mredact:
@@ -43,6 +54,7 @@ executables:
     - random
     - containers
     - directory
+    - regex-compat
 tests:
   mredact-test:
     main:                Spec.hs
