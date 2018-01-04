@@ -67,6 +67,6 @@ extra-package-dbs: []
 # compiler-check: newer-minor
 
 nix:
-  enable: true
+  enable: false
   packages: [zlib.dev zlib.out gcc ncurses pcre]
 

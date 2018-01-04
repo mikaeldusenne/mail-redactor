@@ -47,7 +47,8 @@ createMultiparts ls = f ls [] [] []
                             else ""
                       plaina = "["++mimeType++": " ++ id ++ " ]"
                       
-                      contentID = if is_image then "Content-ID: <" ++ id ++ ">\n" else ""
+                      -- contentID = if is_image then "Content-ID: <" ++ id ++ ">\n" else ""
+                      contentID = "Content-ID: <" ++ id ++ ">\n"
                       contentType = ((("Content-Type: "++) . (++";")) $ mimeType)
                                     ++ " name=\"" ++ filename ++ "\"\n"
                       contentDisposition = "Content-Disposition: "++disposition++"; filename=\"" ++ filename ++ "\"\n"
@@ -55,9 +56,10 @@ createMultiparts ls = f ls [] [] []
                         
                       atta = contentType
                         ++ contentDisposition
-                        ++ "Content-Transfer-Encoding: base64\n"
+                        ++ "Content-Transfer-Encoding: BASE64\n"
                         ++ contentID
-                        ++ "X-Attachment-Id: <" ++ id ++ ">\n\n"
+                        -- ++ "X-Attachment-Id: <" ++ id ++ ">\n\n"
+                        ++ "\n"
                         ++ b64
                   f ls (h++[htmla]) (p++[plaina]) (a++[atta])
 
