@@ -48,7 +48,7 @@ createMultiparts ls = f ls [] [] []
                       plaina = "["++mimeType++": " ++ id ++ " ]"
                       
                       -- contentID = if is_image then "Content-ID: <" ++ id ++ ">\n" else ""
-                      contentID = "Content-ID: <" ++ id ++ ">\n"
+                      contentID = "Content-ID: <id" ++ id ++ ">\n"
                       contentType = ((("Content-Type: "++) . (++";")) $ mimeType)
                                     ++ " name=\"" ++ filename ++ "\"\n"
                       contentDisposition = "Content-Disposition: "++disposition++"; filename=\"" ++ filename ++ "\"\n"
@@ -67,33 +67,58 @@ createMultiparts ls = f ls [] [] []
         f (l:ls) h p a = default_line l ls h p a
         default_line l ls h p a = f ls (h++[l]) (p++[l]) a
 
-createAlternative html plain = unlines ["Content-Type: multipart/alternative; boundary=" ++ alternativeBound
-                                       ,""
-                                       ,alternativeBoundline ""
-                                       ,"Content-Type: text/plain; charset=UTF-8"
-                                       ,"Content-Transfer-Encoding: quoted-printable"
-                                       ,""
-                                       ,plain
-                                       ,""
-                                       ,alternativeBoundline ""
-                                       ,"Content-Type: text/html; charset=UTF-8"
-                                       ,""
-                                       ,html
-                                       ,alternativeBoundline "--"
-                                       ]
+createAlternative html plain attachments =
+  unlines ["Content-Type: multipart/alternative; boundary=" ++ alternativeBound
+          ,"MIME-version: 1.0"
+          ,""
+          ,alternativeBoundline ""
+          ,"Content-Transfer-Encoding: quoted-printable"
+          ,"Content-Type: text/plain;"
+          ,"    charset=UTF-8;"
+            -- ,"    format=flowed"
+          ,""
+          ,plain
+          ,""
+          ,alternativeBoundline ""
+          ,createMixed html attachments
+          ,alternativeBoundline "--"
+          ]
   where alternativeBound = "alternativeboundary1234567890"
         alternativeBoundline add = "--"++alternativeBound++add
 
-createRelated html plain attachts = unlines ["Content-Type: multipart/related; boundary=" ++ relatedBoundary
-                                             ,""
-                                             ,relatedBoundaryline ""
-                                             ,createAlternative html plain
-                                             ,""
-                                             ,unlines . insertBeforeEach (relatedBoundaryline "") $ attachts
-                                             ,relatedBoundaryline "--"
-                                             ]
+createRelated html = unlines ["Content-Type: multipart/related;"
+                             ,"    type=text/html;"
+                             ,"    boundary=" ++ relatedBoundary
+                             ,""
+                             ,relatedBoundaryline ""
+                             ,"Content-Transfer-Encoding: quoted-printable"
+                             ,"Content-Type: text/html;"
+                             ,"    charset=UTF-8;"
+                             ,""
+                             ,html
+                             -- ,createAlternative html plain
+                             -- ,""
+                             -- ,unlines . insertBeforeEach (relatedBoundaryline "") $ attachts
+                             ,relatedBoundaryline "--"
+                             ]
   where relatedBoundary = "relatedBoundary7894561230"
         relatedBoundaryline add = "--" ++ relatedBoundary ++ add
+
+
+createMixed html attachts = unlines ["Content-Type: multipart/mixed;"
+                                    ,"    type=text/html;"
+                                    ,"    boundary=" ++ mixedBoundary
+                                    ,""
+                                    ,mixedBoundaryline ""
+                                    ,createRelated html
+                                    ,""
+                                    ,unlines . insertBeforeEach (mixedBoundaryline "") $ attachts
+                                    ,mixedBoundaryline "--"
+                                    ]
+  where mixedBoundary = "mixedBoundary7894561230"
+        mixedBoundaryline add = "--" ++ mixedBoundary ++ add
+
+
 
 main = do
   ls <- lines <$> (getContents >>= substitute_smileys)
@@ -124,7 +149,7 @@ main = do
       --                     "</body></html>"]
 
   writeFile "/home/mika/tmp/mail_body.txt" html_str
-  putStrLn $ createRelated html_str plain attachments
+  putStrLn $ createAlternative html_str plain attachments
 
 
 
