@@ -55,6 +55,10 @@ executables:
     - containers
     - directory
     - regex-compat
+    - mime
+    - base64-bytestring
+    - lens
+    
 tests:
   mredact-test:
     main:                Spec.hs
