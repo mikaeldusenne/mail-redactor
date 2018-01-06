@@ -34,6 +34,9 @@ library:
     - containers
     - directory
     - regex-compat
+    - mime
+    - base64-bytestring
+    - lens
 
 executables:
   mredact:
@@ -45,19 +48,7 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - mredact
-    - hlib
-    - process
-    - regex-pcre
-    - pandoc
-    - pandoc-types
-    - skylighting
-    - random
-    - containers
-    - directory
-    - regex-compat
-    - mime
-    - base64-bytestring
-    - lens
+
     
 tests:
   mredact-test:
