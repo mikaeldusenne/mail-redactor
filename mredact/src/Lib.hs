@@ -2,41 +2,44 @@
 module Lib where
 
 -----------------------------IMPORTS---------------------------------
-import qualified Data.Set as Set
-
--- import qualified Codec.MIME.QuotedPrintable as QP
 import QuotedPrintable
-import Control.Lens hiding (element)
-
 import Smiley
 import List
-
-import Text.Regex.PCRE
 import General
 import Hunix (exec)
 import ContentType
+import qualified Html as H
 
+import qualified Data.Set as Set
+import Control.Monad
+import Control.Lens hiding (element)
+import Text.Regex.PCRE
 import System.Process
 import System.IO
 import System.Directory
-
 import Control.Monad
-
 import Data.List
+import System.Random (randomIO)
+import Data.Map.Strict (Map, (!))
+import qualified Data.Map.Strict as M
 
 import Text.Pandoc hiding (Plain)
-
 import Text.Pandoc.Readers.Markdown 
 import Text.Pandoc.Writers.HTML
 import Text.Pandoc.Walk
 import Skylighting
-import System.Random (randomIO)
 
-
-import Data.Map.Strict (Map, (!))
-import qualified Data.Map.Strict as M
--- import qualified Data.ByteString.Char8 as C
+import Network.HTTP.Conduit (simpleHttp)
+import qualified Data.ByteString.Lazy.Char8 as L
 --------------------------------------------------------------------
+
+max'attachment'size = 10^6 -- ^6
+
+fileSize :: String -> IO Integer
+fileSize = (read <$>) . exec "stat" . (:["-c","%s"])
+
+uploadFile = (last . lines <$>)
+  . exec "scp_website_with_date" . (:[])
 
 getFileMimeType :: String -> IO [Char]
 getFileMimeType = (extract <$>) . exec "file" . (:["--mime-type"])
@@ -65,9 +68,6 @@ instance Show TransferEncoding where
              QP  -> f "quoted-printable"
     where f s = "Content-Transfer-Encoding: " ++ s
 
--- instance Show Mail where
---   show = createAlternative
-
 instance Monoid Mail where
   mempty = Mail { _plain="", _html="", _pj=[]}
   mappend (Mail a b c) (Mail a' b' c') = Mail (a++"\n"++a') (b++"\n"++b') (c++c')
@@ -83,38 +83,108 @@ instance Show PJ where
 
 defaultPJ = PJ{oid="", mimetype=ContentType (MIME "") M.empty, disposition="", name="", content=""} :: PJ
 
--- create_attachment :: String -> IO (Maybe Mail)
-create_attachment path = doesFileExist path >>= (f ? return Nothing)
-  where f = do
-          mimeType <- getFileMimeType path
-          b64 <- encode_base64 path
-          id <- randomID
-          let filename = basename path
-              plaina = "["++mimeType++": " ++ filename ++ "@" ++ id ++ " ]"
-              is_inline = beginWith "image" mimeType
-              ans = mempty {_plain=plaina}
-              pj = defaultPJ {oid=id,
-                              mimetype=defaultContentType{_CT=MIME mimeType},
-                              name=filename,
-                              content=b64}
+guessLanguage filename
+  | f ".R .r" = "R"
+  | f ".hs" = "Haskell"
+  | f "c h" = "C"
+  | f "cpp" = "C++"
+  | f "py"  = "Python"
+  | otherwise = ""
+  where f = any (`endWith` filename) . words
+  
 
-          return . Just $
-            if is_inline
-            then ans {_html = "<div><img src=\"cid:" ++ id ++ "\""
-                              ++" alt=\"image"++id++"\""
-                              ++" data-inline-image=\"true\""
-                              ++" width=\"416\" height=\"260\""
-                              ++"></div>"
-                        ,_pj = [pj{disposition="inline"}]}
-            else ans {_pj = [pj{disposition="attachment"}]}
+-- create_attachment :: String -> IO (Maybe Mail)
+create_attachment = g . trim
+  where g path = doesFileExist path >>= (f ? return Nothing)
+          where f = do
+                  size <- fileSize path
+                  mimeType <- getFileMimeType path
+                  let category = head . splitOn (=='/') $ mimeType
+                      filename = basename path
+                      
+                  if size > max'attachment'size
+                    then uploadFile path >>=
+                         \url -> return . Just $ mempty {_plain=url,
+                                        _html=surround2 "[" "]" filename
+                                              ++ surround2 "(" ")" url}
+                    else do
+                    b64 <- encode_base64 path
+                    id <- randomID
+                    let ans = mempty {_plain=plaina, _pj=[defaultPJ
+                                       {oid=id,
+                                        mimetype=defaultContentType{_CT=MIME mimeType},
+                                        name=filename,
+                                        content=b64,
+                                        disposition=if category == "image"
+                                                    then "inline" else "attachment"}]}
+                          where plaina = "["++mimeType++": "++filename++"@"++id++"]"
+                        preview_image = show $ H.div [img]
+                          where img = H.img
+                                      . M.fromList
+                                      $ [("src", "cid:"++id),
+                                          ("alt", filename)]
+                        preview_text = do
+                          s <- readFile path
+                          let f = H.div' ["scrollable black"] . (:[]) . H.Text
+                                  . surround2 (surround "\n" ("~~~~"++guessLanguage filename)) "\n~~~~\n"
+                          return $ surround "\n----\n"
+                            . (surround "\n"
+                                (surround "**" filename++":")++)
+                            . show $ f s
+
+                    Just <$> case category of
+                               "image" -> return ans{_html=preview_image}
+                               "text" -> preview_text >>= \s ->
+                                                            return ans{_html=s}
+                               _ -> return ans
+                                               
+                -- g categ = do
+ 
+                  
+                  -- let 
+                      
+                  --     pj = 
+                  --     makeAns "image" = return $ ans {
+                  --       _html=html
+                  --       ,_pj=[pj{disposition="inline"}]}
+                  --       where html = show $ H.div [img]
+                  --               where img = H.img
+                  --                       . M.fromList
+                  --                       $ [("src", "cid:"++id),
+                  --                          ("alt", filename)]
+                  --                     title = H.tag "p" [H.Text filename]
+                      
+                  --     makeAns "text" = do
+                  --       s <- readFile path
+                  --       let f = H.div' ["scrollable black"] . (:[]) . H.Text
+                  --             . surround2 (surround "\n" ("~~~~"++guessLanguage filename)) "\n~~~~\n"
+                  --       return $ ans {_html=surround "\n----\n"
+                  --                           . (surround "\n"
+                  --                               (surround "**" filename++":")++)
+                  --                           . show $ f s,
+                  --                     _pj=[pj{disposition="attachment"}]}
+                  --     makeAns _ = return $ ans {_pj = [pj{disposition="attachment"}]}
+                        
+                  -- Just <$> if size < max'attachment'size
+                  --          then makeAns category
+                  --          else uploadFile path >>=
+                  --               \s -> return $ mempty {_plain=s,
+                  --                                      _html=s}
+                  --   -- then ans {_html = show html
+                  --   --          ,_pj = [pj{disposition="inline"}]}
+                  --   -- else ans {_pj = [pj{disposition="attachment"}]}
+
+
+create_link_preview l = undefined -- simpleHttp l >>= 
+  
 
 -- createMail :: [String] -> IO Mail
 createMail ls = foldM f mempty ls
   where f mail l@('/':_) = (mappend mail . just_or_default (default_line l))
           <$> create_attachment (trim l)
+        -- f mail l | beginWith "@link:" l = create_link_preview $ drop 5 l
         f mail l = return . mappend mail $ default_line l
         default_line l = mempty{_html=l, _plain=l}
-
 
 data Element = Multipart {_content'type :: ContentType
                           ,_elemlist :: [Element]}
@@ -142,90 +212,32 @@ newMultipart t = randomID >>= \s ->
   in return Multipart{ _content'type=ContentType t m,
                        _elemlist=[]}
 
-createAlternative mail =
-  unlines ["Content-Type: multipart/alternative; boundary=" ++ alternativeBound
-          ,""
-          ,alternativeBoundline ""
-          ,"Content-Transfer-Encoding: quoted-printable"
-          ,"Content-Type: text/plain; charset=\"UTF-8\";"
-            -- ,"    format=flowed"
-          ,""
-          -- ,encode . _plain $ mail
-          ,_plain mail
-          ,""
-          ,alternativeBoundline ""
-          ,createMixed mail
-          ,""
-          ,alternativeBoundline "--"
-          ]
-  where alternativeBound = "alternativeboundary1234567890"
-        alternativeBoundline add = "--"++alternativeBound++add
-
-createMixed mail = unlines ["Content-Type: multipart/mixed;"
-                           ,"    type=\"text/html\";"
-                           ,"    boundary=" ++ mixedBoundary
-                           ,""
-                           ,mixedBoundaryline ""
-                           ,createRelated mail
-                           ,""
-                           ,unlines
-                             . insertBeforeEach (mixedBoundaryline "")
-                             . fmap show
-                             . filter ((=="attachment") . disposition)
-                             $ _pj  mail
-                           ,""
-                           ,mixedBoundaryline "--"
-                           ]
-  where mixedBoundary = "mixedboundary7894561230"
-        mixedBoundaryline add = "--" ++ mixedBoundary ++ add
-
-
-
-createRelated mail = unlines ["Content-Type: multipart/related;"
-                             ,"    type=\"text/html\";"
-                             ,"    boundary=" ++ relatedBoundary
-                             ,""
-                             ,relatedBoundaryline ""
-                             ,"Content-Transfer-Encoding: quoted-printable"
-                             ,"Content-Type: text/html; charset=\"UTF-8\";"
-                             ,""
-                             -- ,encode . _html $ mail
-                             ,_html mail
-                             ,""
-                             ,unlines
-                               . insertBeforeEach (relatedBoundaryline "")
-                               . fmap show
-                               . filter ((=="inline") . disposition)
-                               . _pj $ mail
-                             ,""
-                             ,relatedBoundaryline "--"
-                             ]
-  where relatedBoundary = "relatedBoundary7894561230"
-        relatedBoundaryline add = "--" ++ relatedBoundary ++ add
-
-
-run str = do
-  ls <- lines <$> substitute_smileys str
-  template <- readFile "/home/mika/.perso/pandoc.html"
-
-  let ftype = over (content'type . args) (M.insert "type" ("\"" ++ show HTML ++ "\""))
-
-  alternative <- newMultipart Alternative
-  related <- ftype <$> newMultipart Related
-  mixed <- ftype <$> newMultipart Mixed
-  
+compileHtml :: String -> String -> String
+compileHtml template html =
   let readerExts = Set.union (Set.fromList [Ext_emoji]) $ readerExtensions def
       readerOpts = (def {readerStandalone = True,
                          readerExtensions = readerExts})
       writerOpts = (def {writerHighlight = True,
                          writerHighlightStyle = tango,
                          writerTemplate = Just template})
-      compileHtml = writeHtmlString writerOpts . (\(Right e) -> e) . readMarkdown readerOpts
+  in writeHtmlString writerOpts . (\(Right e) -> e) . readMarkdown readerOpts $ html
+
+runMail :: String -> IO Mail
+runMail str = do
+  ls <- lines <$> substitute_smileys str
+  template <- readFile "/home/mika/.perso/pandoc.html"
+  over html (compileHtml template) <$> createMail ls
+
+run str = do
+
+  let ftype = over (content'type . args) (M.insert "type" ("\"" ++ show HTML ++ "\""))
+  alternative <- newMultipart Alternative
+  related <- ftype <$> newMultipart Related
+  mixed <- ftype <$> newMultipart Mixed
   
-  let fhtml = encode . compileHtml . (++"</div>") . ("<div>"++)
   (Mail{_plain=plain,
        _html=html,
-       _pj=pj}) <- over plain encode . over html fhtml <$> createMail ls
+       _pj=pj}) <- over plain encode . over html encode <$> runMail str
   
   return $ alternative {_elemlist=
     [Text (ContentType Plain M.empty) plain
@@ -234,6 +246,4 @@ run str = do
                      (Text (defaultContentType {_CT=HTML}) html)
                      : (map PJE . filter ((=="inline") . disposition) $ pj)})
             : (map PJE . filter ((=="attachment") . disposition) $ pj)}]}
-
-  -- putStrLn $ createAlternative mail
 

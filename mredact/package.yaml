@@ -37,6 +37,8 @@ library:
     - mime
     - base64-bytestring
     - lens
+    - bytestring
+    - http-conduit
 
 executables:
   mredact:
