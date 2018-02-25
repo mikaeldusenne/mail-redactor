@@ -24,21 +24,24 @@ dependencies:
 library:
   source-dirs: src
   dependencies:
-    - hlib
-    - process
-    - regex-pcre
-    - pandoc
-    - pandoc-types
-    - skylighting
-    - random
+    - base64-bytestring
+    - bytestring
     - containers
     - directory
-    - regex-compat
-    - mime
-    - base64-bytestring
-    - lens
-    - bytestring
+    - hlib
     - http-conduit
+    - lens
+    - mime
+    - pandoc
+    - pandoc-types
+    - process
+    - random
+    - regex-pcre
+    - skylighting
+    - regex-compat
+    - text-conversions
+    - utf8-string
+    - text
 
 executables:
   mredact:
@@ -48,6 +51,8 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -Wall
+    - -fwarn-tabs
     dependencies:
     - mredact
 
@@ -62,3 +67,4 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - mredact
+    - mtl

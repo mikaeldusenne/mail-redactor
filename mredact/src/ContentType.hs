@@ -7,6 +7,7 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 
 data CT = Alternative | Mixed | Related | Plain | HTML | MIME String
+  deriving(Eq)
 
 data ContentType = ContentType {_CT :: CT,
                                 _args :: Map String String}
@@ -34,3 +35,4 @@ instance Show ContentType where
     where f (k, v) = "; " ++ k ++ "=" ++ v
 
 defaultContentType = ContentType (MIME "") M.empty
+defaultUTF8ContentType = ContentType (MIME "") (M.fromList [("charset", "utf-8")])

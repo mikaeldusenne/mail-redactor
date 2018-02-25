@@ -1,0 +1,1 @@
+- no conversion when in code block (smiley etc)

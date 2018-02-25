@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
+{-# OPTIONS_GHC -fno-warn-type-defaults #-}
 {-# LANGUAGE TemplateHaskell, DuplicateRecordFields #-}
 module Lib where
 
@@ -6,47 +8,45 @@ import QuotedPrintable
 import Smiley
 import List
 import General
-import Hunix (exec)
+import Hunix
 import ContentType
 import qualified Html as H
 
+import qualified Data.Text as T (pack, unpack)
 import qualified Data.Set as Set
 import Control.Monad
 import Control.Lens hiding (element)
-import Text.Regex.PCRE
-import System.Process
-import System.IO
 import System.Directory
-import Control.Monad
-import Data.List
+-- import Text.Regex.PCRE
+-- import System.Process
+-- import System.IO
+-- import Control.Monad
+-- import Data.List
+-- import Data.Map.Strict (Map, (!))
+-- import Text.Pandoc.Walk
+-- import Network.HTTP.Conduit (simpleHttp)
+-- import qualified Data.ByteString.Lazy.Char8 as L
+
+-- import qualified Codec.Binary.Base64.String as Base64
+import qualified Data.ByteString.Base64.Lazy as Base64
+import qualified Data.ByteString.Lazy.Char8 as BS
+import qualified Data.ByteString.UTF8 as BSUTF8
+import qualified Data.ByteString.Base64 as Base64Strict
+
+import Text.Pandoc.Extensions
+import Text.Pandoc.Readers.Markdown 
+import Text.Pandoc.Writers.HTML
 import System.Random (randomIO)
-import Data.Map.Strict (Map, (!))
 import qualified Data.Map.Strict as M
 
 import Text.Pandoc hiding (Plain)
-import Text.Pandoc.Readers.Markdown 
-import Text.Pandoc.Writers.HTML
-import Text.Pandoc.Walk
 import Skylighting
-
-import Network.HTTP.Conduit (simpleHttp)
-import qualified Data.ByteString.Lazy.Char8 as L
 --------------------------------------------------------------------
 
-max'attachment'size = 10^6 -- ^6
+max'attachment'size :: Integer
+max'attachment'size = 5 * 10^6 -- ^6
 
-fileSize :: String -> IO Integer
-fileSize = (read <$>) . exec "stat" . (:["-c","%s"])
-
-uploadFile = (last . lines <$>)
-  . exec "scp_website_with_date" . (:[])
-
-getFileMimeType :: String -> IO [Char]
-getFileMimeType = (extract <$>) . exec "file" . (:["--mime-type"])
-  where extract = trim . tail . dropWhile (/=':')
-
-encode_base64 = exec "base64" . (:[])
-
+randomID :: IO [Char]
 randomID = (("id"++) . show . abs) <$> (randomIO :: IO Integer)
 
 data TransferEncoding = B64 | QP
@@ -73,16 +73,18 @@ instance Monoid Mail where
   mappend (Mail a b c) (Mail a' b' c') = Mail (a++"\n"++a') (b++"\n"++b') (c++c')
 
 instance Show PJ where
-  show (PJ {oid=id, mimetype=m, disposition=d, name=n, content=b64}) = unlines [
+  show (PJ {oid=i, mimetype=m, disposition=d, name=n, content=b64}) = unlines [
     show m ++"; name=\"" ++ n ++ "\""
     ,"Content-Disposition: "++ d ++"; filename=\""++ n ++"\""
     ,show B64
-    ,"Content-ID: <" ++ id ++ ">"
-    ,"X-Attachment-Id: " ++ id
+    ,"Content-ID: <" ++ i ++ ">"
+    ,"X-Attachment-Id: " ++ i
     ,"\n" ++ b64]
 
+defaultPJ :: PJ
 defaultPJ = PJ{oid="", mimetype=ContentType (MIME "") M.empty, disposition="", name="", content=""} :: PJ
 
+guessLanguage :: [Char] -> [Char]
 guessLanguage filename
   | f ".R .r" = "R"
   | f ".hs" = "Haskell"
@@ -94,6 +96,7 @@ guessLanguage filename
   
 
 -- create_attachment :: String -> IO (Maybe Mail)
+create_attachment :: [Char] -> IO (Maybe Mail)
 create_attachment = g . trim
   where g path = doesFileExist path >>= (f ? return Nothing)
           where f = do
@@ -109,82 +112,48 @@ create_attachment = g . trim
                                               ++ surround2 "(" ")" url}
                     else do
                     b64 <- encode_base64 path
-                    id <- randomID
+                    i <- randomID
                     let ans = mempty {_plain=plaina, _pj=[defaultPJ
-                                       {oid=id,
+                                       {oid=i,
                                         mimetype=defaultContentType{_CT=MIME mimeType},
                                         name=filename,
                                         content=b64,
                                         disposition=if category == "image"
                                                     then "inline" else "attachment"}]}
-                          where plaina = "["++mimeType++": "++filename++"@"++id++"]"
+                          where plaina = "["++mimeType++": "++filename++"@"++i++"]"
                         preview_image = show $ H.div [img]
                           where img = H.img
                                       . M.fromList
-                                      $ [("src", "cid:"++id),
+                                      $ [("src", "cid:"++i),
                                           ("alt", filename)]
                         preview_text = do
                           s <- readFile path
-                          let f = H.div' ["scrollable black"] . (:[]) . H.Text
+                          let ff = H.div' ["scrollable black"] . (:[]) . H.Text
                                   . surround2 (surround "\n" ("~~~~"++guessLanguage filename)) "\n~~~~\n"
                           return $ surround "\n----\n"
                             . (surround "\n"
                                 (surround "**" filename++":")++)
-                            . show $ f s
+                            . show $ ff s
 
                     Just <$> case category of
                                "image" -> return ans{_html=preview_image}
                                "text" -> preview_text >>= \s ->
                                                             return ans{_html=s}
                                _ -> return ans
-                                               
-                -- g categ = do
- 
-                  
-                  -- let 
-                      
-                  --     pj = 
-                  --     makeAns "image" = return $ ans {
-                  --       _html=html
-                  --       ,_pj=[pj{disposition="inline"}]}
-                  --       where html = show $ H.div [img]
-                  --               where img = H.img
-                  --                       . M.fromList
-                  --                       $ [("src", "cid:"++id),
-                  --                          ("alt", filename)]
-                  --                     title = H.tag "p" [H.Text filename]
-                      
-                  --     makeAns "text" = do
-                  --       s <- readFile path
-                  --       let f = H.div' ["scrollable black"] . (:[]) . H.Text
-                  --             . surround2 (surround "\n" ("~~~~"++guessLanguage filename)) "\n~~~~\n"
-                  --       return $ ans {_html=surround "\n----\n"
-                  --                           . (surround "\n"
-                  --                               (surround "**" filename++":")++)
-                  --                           . show $ f s,
-                  --                     _pj=[pj{disposition="attachment"}]}
-                  --     makeAns _ = return $ ans {_pj = [pj{disposition="attachment"}]}
-                        
-                  -- Just <$> if size < max'attachment'size
-                  --          then makeAns category
-                  --          else uploadFile path >>=
-                  --               \s -> return $ mempty {_plain=s,
-                  --                                      _html=s}
-                  --   -- then ans {_html = show html
-                  --   --          ,_pj = [pj{disposition="inline"}]}
-                  --   -- else ans {_pj = [pj{disposition="attachment"}]}
 
-
-create_link_preview l = undefined -- simpleHttp l >>= 
-  
+create_link_preview :: String -> IO Mail
+create_link_preview l = return . (\s -> mempty{_plain=s, _html=s})
+                        . show $ (H.tag "link" []){H._attrs=M.fromList [("src",l)]}
 
 -- createMail :: [String] -> IO Mail
+createMail :: Foldable t => t [Char] -> IO Mail
 createMail ls = foldM f mempty ls
   where f mail l@('/':_) = (mappend mail . just_or_default (default_line l))
-          <$> create_attachment (trim l)
-        -- f mail l | beginWith "@link:" l = create_link_preview $ drop 5 l
+                           <$> create_attachment (trim l)
+        f _ l | beginWith "@link:" l = create_link_preview $ drop 5 l
         f mail l = return . mappend mail $ default_line l
-        default_line l = mempty{_html=l, _plain=l}
+        default_line l = mempty{_html=l', _plain=l'}
+          where l' = l ++ "  "
 
 data Element = Multipart {_content'type :: ContentType
                           ,_elemlist :: [Element]}
@@ -194,12 +163,13 @@ data Element = Multipart {_content'type :: ContentType
 makeLenses ''Element
 
 instance Show Element where
-  show (PJE pj) = show pj
-  show (Text {_content'type=t, _s=s}) = unlines
-    [show QP
+  show (PJE e) = show e
+  show (Text {_content'type=t, _s=str}) = unlines
+    [show (if (_CT t)==HTML then B64 else QP)
+     -- show QP
     ,show . over args (M.insert "charset" "utf-8") $ t
-    ,"", s]
-  show (Multipart {_content'type=t@(ContentType ct m),
+    ,"", str]
+  show (Multipart {_content'type=t@(ContentType _ m),
                    _elemlist=l}) = unlines
     [show t,""
     ,unlines . insertBeforeEach ("--"++b) . map show $ l
@@ -207,20 +177,19 @@ instance Show Element where
     where b = m M.! "boundary"
 
 newMultipart :: CT -> IO Element
-newMultipart t = randomID >>= \s ->
-  let m = M.fromList [("boundary",ctStr t ++ s)]
+newMultipart t = randomID >>= \str ->
+  let m = M.fromList [("boundary",ctStr t ++ str)]
   in return Multipart{ _content'type=ContentType t m,
                        _elemlist=[]}
 
 compileHtml :: String -> String -> String
 compileHtml template html =
-  let readerExts = Set.union (Set.fromList [Ext_emoji]) $ readerExtensions def
+  let -- readerExts = Set.union (Set.fromList [Ext_emoji]) $ readerExtensions def
       readerOpts = (def {readerStandalone = True,
-                         readerExtensions = readerExts})
-      writerOpts = (def {writerHighlight = True,
-                         writerHighlightStyle = tango,
+                         readerExtensions = extensionsFromList [Ext_emoji]})
+      writerOpts = (def {writerHighlightStyle = Just tango,
                          writerTemplate = Just template})
-  in writeHtmlString writerOpts . (\(Right e) -> e) . readMarkdown readerOpts $ html
+  in  T.unpack . writeHtml5String writerOpts . readMarkdown readerOpts . T.pack $ html
 
 runMail :: String -> IO Mail
 runMail str = do
@@ -228,22 +197,36 @@ runMail str = do
   template <- readFile "/home/mika/.perso/pandoc.html"
   over html (compileHtml template) <$> createMail ls
 
+run :: String -> IO Element
 run str = do
-
   let ftype = over (content'type . args) (M.insert "type" ("\"" ++ show HTML ++ "\""))
-  alternative <- newMultipart Alternative
-  related <- ftype <$> newMultipart Related
-  mixed <- ftype <$> newMultipart Mixed
+      onlyPlain = return
+                  . Text (defaultUTF8ContentType {_CT=Plain})
+                  . encode
+                  $ (unlines.tail.lines) str
+        
+      alsoHTML = do
+        alternative <- newMultipart Alternative
+        related <- ftype <$> newMultipart Related
+        mixed <- ftype <$> newMultipart Mixed
   
-  (Mail{_plain=plain,
-       _html=html,
-       _pj=pj}) <- over plain encode . over html encode <$> runMail str
-  
-  return $ alternative {_elemlist=
-    [Text (ContentType Plain M.empty) plain
-    ,mixed {_elemlist=
-            (related {_elemlist=
-                     (Text (defaultContentType {_CT=HTML}) html)
-                     : (map PJE . filter ((=="inline") . disposition) $ pj)})
-            : (map PJE . filter ((=="attachment") . disposition) $ pj)}]}
+        (Mail{_plain=plaintext,
+              _html=htmltext,
+              _pj=pjmail}) <- over plain encode
+                              . over html (BSUTF8.toString
+                                           . Base64Strict.encode
+                                           . BSUTF8.fromString)
+                              <$> runMail str
 
+        -- b46_html <- encode_
+  
+        return $ alternative {_elemlist=
+                              [Text (defaultUTF8ContentType {_CT=Plain}) plaintext
+                              ,mixed {_elemlist=
+                                      (related {_elemlist=
+                                                (Text (defaultUTF8ContentType {_CT=HTML}) htmltext)
+                                                : (map PJE . filter ((=="inline") . disposition) $ pjmail)})
+                                      : (map PJE . filter ((=="attachment") . disposition) $ pjmail)}]}
+
+          
+  if (head $ lines str) == "!plain!" then onlyPlain else alsoHTML
