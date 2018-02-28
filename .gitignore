@@ -1,6 +1,7 @@
 *.h[io]
 *.o
 \#*\#
-mail_original.txt
-redacted_mail.txt
-headers
+.dir-locals.el
+.stack-work/
+mredact.cabal
+*~
