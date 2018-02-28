@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# LANGUAGE TemplateHaskell, DuplicateRecordFields #-}
 module Lib where
 
@@ -12,8 +12,8 @@ import Hunix
 import ContentType
 import qualified Html as H
 
-import qualified Data.Text as T (pack, unpack)
-import qualified Data.Set as Set
+import Data.Monoid
+import qualified Data.Text as T (pack, unpack, Text)
 import Control.Monad
 import Control.Lens hiding (element)
 import System.Directory
@@ -28,8 +28,8 @@ import System.Directory
 -- import qualified Data.ByteString.Lazy.Char8 as L
 
 -- import qualified Codec.Binary.Base64.String as Base64
-import qualified Data.ByteString.Base64.Lazy as Base64
-import qualified Data.ByteString.Lazy.Char8 as BS
+-- import qualified Data.ByteString.Base64.Lazy as Base64
+-- import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.ByteString.UTF8 as BSUTF8
 import qualified Data.ByteString.Base64 as Base64Strict
 
@@ -182,20 +182,23 @@ newMultipart t = randomID >>= \str ->
   in return Multipart{ _content'type=ContentType t m,
                        _elemlist=[]}
 
-compileHtml :: String -> String -> String
+-- compileHtml :: String -> String -> String
+compileHtml :: PandocMonad m => [Char] -> String -> m T.Text
 compileHtml template html =
   let -- readerExts = Set.union (Set.fromList [Ext_emoji]) $ readerExtensions def
       readerOpts = (def {readerStandalone = True,
-                         readerExtensions = extensionsFromList [Ext_emoji]})
+                         readerExtensions = githubMarkdownExtensions <> extensionsFromList [Ext_emoji, Ext_raw_html]})
       writerOpts = (def {writerHighlightStyle = Just tango,
                          writerTemplate = Just template})
-  in  T.unpack . writeHtml5String writerOpts . readMarkdown readerOpts . T.pack $ html
+      a :: Pandoc
+      a = fromEither . runPure $ (readMarkdown readerOpts . T.pack $ html)
+  in  writeHtml5String writerOpts a
 
 runMail :: String -> IO Mail
 runMail str = do
   ls <- lines <$> substitute_smileys str
   template <- readFile "/home/mika/.perso/pandoc.html"
-  over html (compileHtml template) <$> createMail ls
+  over html (T.unpack . fromEither . runPure <$> compileHtml template) <$> createMail ls
 
 run :: String -> IO Element
 run str = do
