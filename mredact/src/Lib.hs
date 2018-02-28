@@ -86,14 +86,19 @@ defaultPJ = PJ{oid="", mimetype=ContentType (MIME "") M.empty, disposition="", n
 
 guessLanguage :: [Char] -> [Char]
 guessLanguage filename
-  | f ".R .r" = "R"
-  | f ".hs" = "Haskell"
-  | f "c h" = "C"
-  | f "cpp" = "C++"
-  | f "py"  = "Python"
+  | f ".R .r" = "r"
+  | f ".hs"   = "haskell"
+  | f "c h"   = "c"
+  | f "cpp"   = "c++"
+  | f "py"    = "python"
+  | f ".tex .latex"    = "latex"
+  | f ".sh"    = "sh"
+  | f ".html"    = "html"
   | otherwise = ""
   where f = any (`endWith` filename) . words
   
+
+-- highlighting custom styles: https://stackoverflow.com/questions/30880200/pandoc-what-are-the-available-syntax-highlighters
 
 -- create_attachment :: String -> IO (Maybe Mail)
 create_attachment :: [Char] -> IO (Maybe Mail)
@@ -128,12 +133,16 @@ create_attachment = g . trim
                                           ("alt", filename)]
                         preview_text = do
                           s <- readFile path
-                          let ff = H.div' ["scrollable black"] . (:[]) . H.Text
-                                  . surround2 (surround "\n" ("~~~~"++guessLanguage filename)) "\n~~~~\n"
+                          let ff = -- H.div' ["scrollable black"] . (:[]) . H.Text
+                                  surround2 (surround "\n" ("```{"
+                                                             ++" ."++guessLanguage filename
+                                                             ++" .scrollable"
+                                                             ++" }")) "\n```\n"
                           return $ surround "\n----\n"
                             . (surround "\n"
                                 (surround "**" filename++":")++)
-                            . show $ ff s
+                            -- . show
+                            $ ff s
 
                     Just <$> case category of
                                "image" -> return ans{_html=preview_image}
@@ -187,7 +196,7 @@ compileHtml :: PandocMonad m => [Char] -> String -> m T.Text
 compileHtml template html =
   let -- readerExts = Set.union (Set.fromList [Ext_emoji]) $ readerExtensions def
       readerOpts = (def {readerStandalone = True,
-                         readerExtensions = githubMarkdownExtensions <> extensionsFromList [Ext_emoji, Ext_raw_html]})
+                         readerExtensions = githubMarkdownExtensions <> extensionsFromList [Ext_emoji, Ext_raw_html, Ext_fenced_code_blocks, Ext_fenced_code_attributes]})
       writerOpts = (def {writerHighlightStyle = Just tango,
                          writerTemplate = Just template})
       a :: Pandoc
