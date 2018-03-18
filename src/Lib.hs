@@ -12,6 +12,7 @@ import Hunix
 import ContentType
 import qualified Html as H
 
+import Data.List
 import Data.Monoid
 import qualified Data.Text as T (pack, unpack, Text)
 import Control.Monad
@@ -22,7 +23,7 @@ import System.Directory
 -- import System.IO
 -- import Control.Monad
 -- import Data.List
--- import Data.Map.Strict (Map, (!))
+import qualified Data.Map.Strict as M
 -- import Text.Pandoc.Walk
 -- import Network.HTTP.Conduit (simpleHttp)
 -- import qualified Data.ByteString.Lazy.Char8 as L
@@ -32,6 +33,7 @@ import System.Directory
 -- import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.ByteString.UTF8 as BSUTF8
 import qualified Data.ByteString.Base64 as Base64Strict
+import System.FilePath.Posix
 
 import Text.Pandoc.Extensions
 import Text.Pandoc.Readers.Markdown 
@@ -41,13 +43,15 @@ import qualified Data.Map.Strict as M
 
 import Text.Pandoc hiding (Plain)
 import Skylighting
+import CSV
 --------------------------------------------------------------------
 
-max'attachment'size :: Integer
 max'attachment'size = 5 * 10^6 -- ^6
+max'text'preview'size = 5 * 10^4
+max'text'preview'lines = 500
 
 randomID :: IO [Char]
-randomID = (("id"++) . show . abs) <$> (randomIO :: IO Integer)
+randomID = (("yolo"++) . show . abs) <$> (randomIO :: IO Integer)
 
 data TransferEncoding = B64 | QP
 
@@ -84,19 +88,21 @@ instance Show PJ where
 defaultPJ :: PJ
 defaultPJ = PJ{oid="", mimetype=ContentType (MIME "") M.empty, disposition="", name="", content=""} :: PJ
 
-guessLanguage :: [Char] -> [Char]
-guessLanguage filename
-  | f ".R .r" = "r"
-  | f ".hs"   = "haskell"
-  | f "c h"   = "c"
-  | f "cpp"   = "c++"
-  | f "py"    = "python"
-  | f ".tex .latex"    = "latex"
-  | f ".sh"    = "sh"
-  | f ".html"    = "html"
-  | otherwise = ""
-  where f = any (`endWith` filename) . words
-  
+extensionLanguage :: [([Char], [[Char]])]
+extensionLanguage = [("r",         ["R", "r"]),
+                     ("haskell",   ["hs"]),
+                     ("c",         ["c", "h"]),
+                     ("c++",       ["c++", "cpp"]),
+                     ("python",    ["py"]),
+                     ("latex",     ["tex", "latex"]),
+                     ("sh",        ["sh"]),
+                     ("html",      ["html"]),
+                     ("javascript",["js"]),
+                     ("csv",       ["csv"])]
+
+guessLanguage :: String -> Maybe String
+guessLanguage filename = search . drop 1 . takeExtension $ filename
+  where search ext = (fst <$>) . safe_head . filter (any (==ext) . snd) $ extensionLanguage
 
 -- highlighting custom styles: https://stackoverflow.com/questions/30880200/pandoc-what-are-the-available-syntax-highlighters
 
@@ -130,19 +136,27 @@ create_attachment = g . trim
                           where img = H.img
                                       . M.fromList
                                       $ [("src", "cid:"++i),
-                                          ("alt", filename)]
+                                         ("alt", filename)]
                         preview_text = do
                           s <- readFile path
-                          let ff = -- H.div' ["scrollable black"] . (:[]) . H.Text
-                                  surround2 (surround "\n" ("```{"
-                                                             ++" ."++guessLanguage filename
-                                                             ++" .scrollable"
-                                                             ++" }")) "\n```\n"
-                          return $ surround "\n----\n"
-                            . (surround "\n"
-                                (surround "**" filename++":")++)
-                            -- . show
-                            $ ff s
+                          let surroundPreview =
+                                let filetype = guessLanguage filename
+                                in case filetype of
+                                     Just "csv" -> \s -> let sep = guessSep s
+                                       in case sep of Nothing -> ""
+                                                      Just c -> let csv = parseCSV c s
+                                                        in surround "\n" $ show $ H.div' ["scrollable"] [H.table csv]
+                                     ft -> surround2 (surround "\n" ("```{"
+                                                                     ++(just_or_default "" $ (" ."++) <$> ft)
+                                                                     ++" .scrollable"
+                                                                     ++" }")) "\n```\n"
+                          if length (lines s) > max'text'preview'lines
+                            then return ""
+                            else return $ surround "\n----\n"
+                                 . (surround "\n"
+                                    (surround "**" filename++":")++)
+                                 -- . show
+                                 $ surroundPreview s
 
                     Just <$> case category of
                                "image" -> return ans{_html=preview_image}
@@ -150,16 +164,11 @@ create_attachment = g . trim
                                                             return ans{_html=s}
                                _ -> return ans
 
-create_link_preview :: String -> IO Mail
-create_link_preview l = return . (\s -> mempty{_plain=s, _html=s})
-                        . show $ (H.tag "link" []){H._attrs=M.fromList [("src",l)]}
-
 -- createMail :: [String] -> IO Mail
 createMail :: Foldable t => t [Char] -> IO Mail
 createMail ls = foldM f mempty ls
   where f mail l@('/':_) = (mappend mail . just_or_default (default_line l))
                            <$> create_attachment (trim l)
-        f _ l | beginWith "@link:" l = create_link_preview $ drop 5 l
         f mail l = return . mappend mail $ default_line l
         default_line l = mempty{_html=l', _plain=l'}
           where l' = l ++ "  "
