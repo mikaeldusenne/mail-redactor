@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="$lang$" xml:lang="$lang$"$if(dir)$ dir="$dir$"$endif$>
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+$for(author-meta)$
+  <meta name="author" content="$author-meta$" />
+$endfor$
+$if(date-meta)$
+  <meta name="dcterms.date" content="$date-meta$" />
+$endif$
+$if(keywords)$
+  <meta name="keywords" content="$for(keywords)$$keywords$$sep$, $endfor$" />
+$endif$
+  <title>$if(title-prefix)$$title-prefix$ – $endif$$pagetitle$</title>
+  <!-- MY CUSTOM STYLE -->
+  <style type="text/css">
+.black{border: 2px dotted #aaa}.scrollable{max-height:400px; overflow: auto}::selection,a::selection{background:rgba(255,255,0,.3)}a,a::selection{color:#0645ad}hr,img{border:0}a,ins{text-decoration:none}::selection,ins,mark{color:#000}figure,hr{display:block;margin:1em 0}figure,hr,ol,p,ul{margin:1em 0}dfn,figcaption,mark{font-style:italic}table td,table th{padding:.2em 1em;border-top:1px solid #ddd;border-left:1px solid #ddd}.author,figure{text-align:center}html{font-size:100%;overflow-y:scroll;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%}body{color:#444;font-family:Georgia,Palatino,'Palatino Linotype',Times,'Times New Roman',serif;font-size:12px;line-height:1.7;padding:1em;margin:auto;background:#fefefe}a:visited{color:#0b0080}a:hover{color:#06e}a:active{color:#faa700}a:focus{outline:dotted thin}::-moz-selection{background:rgba(255,255,0,.3);color:#000}a::-moz-selection{background:rgba(255,255,0,.3);color:#0645ad}img{max-width:100%;-ms-interpolation-mode:bicubic;vertical-align:middle}h1,h2,h3,h4,h5,h6{color:#111;line-height:125%;margin-top:2em;font-weight:400}b,dt,h4,h5,h6,mark,strong{font-weight:700}h1{font-size:2.5em}h2{font-size:2em}h3{font-size:1.5em}h4{font-size:1.2em}h5{font-size:1em}h6{font-size:.9em}blockquote{color:#666;margin:0;padding-left:3em;border-left:.5em #EEE solid}hr{height:2px;border-top:1px solid #aaa;border-bottom:1px solid #eee;padding:0}kbd,pre,samp{color:#000;font-family:monospace,monospace;font-size:.98em}pre{white-space:pre;white-space:pre-wrap;word-wrap:break-word;}ins{background:#ff9}code {padding: 2px 4px;color: #d14;background-color: #f7f7f9;border: 1px solid #e1e1e8;white-space: nowrap;}pre code {padding: 0;color: inherit;white-space: pre;white-space: pre-wrap;background-color: transparent;border: 0;}pre {display: block;padding: 9.5px;margin: 0 0 10px;font-size: 13px;line-height: 20px;word-break: break-all;word-wrap: break-word;white-space: pre;white-space: pre-wrap;background-color: #f5f5f5;border: 1px solid #ccc;border: 1px solid rgba(0, 0, 0, 0.15);-webkit-border-radius: 4px;-moz-border-radius: 4px;border-radius: 4px;}mark{background:#ff0}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sup{top:-.5em}sub{bottom:-.25em}ol,ul{padding:0 0 0 2em}dd:last-child,li p:last-child{margin-bottom:0}ol ol,ul ul{margin:.3em 0}dl{margin-bottom:1em}dt{margin-bottom:.8em}dd{margin:0 0 .8em 2em}figure img{border:none;margin:0 auto}figcaption{font-size:.8em;margin:0 0 .8em}table{margin-bottom:2em;border-bottom:1px solid #ddd;border-right:1px solid #ddd;border-spacing:0;border-collapse:collapse}table th{background-color:#eee}table td{vertical-align:top}.author{font-size:1.2em}@media only screen and (min-width:480px){body{font-size:14px}}@media only screen and (min-width:768px){body{font-size:16px}}@media print{blockquote,img,pre,tr{page-break-inside:avoid}*{background:0 0!important;color:#000!important;filter:none!important;-ms-filter:none!important}body{font-size:12pt;max-width:100%}a,a:visited{text-decoration:underline}hr{height:1px;border:0;border-bottom:1px solid #000}a[href]:after{content:" (" attr(href) ")"}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}blockquote,pre{border:1px solid #999;padding-right:1em}img{max-width:100%!important}@page :left{margin:15mm 20mm 15mm 10mm}@page :right{margin:15mm 10mm 15mm 20mm}h2,h3,p{orphans:3;widows:3}h2,h3{page-break-after:avoid}}
+  </style>
+  <style type="text/css">
+      code{white-space: pre-wrap;}
+      .smallcaps{font-variant: small-caps;}
+$if(quotes)$
+      q { quotes: "“" "”" "‘" "’"; }
+$endif$
+  </style>
+$if(highlighting-css)$
+  <style type="text/css">
+$highlighting-css$
+  </style>
+$endif$
+$for(css)$
+  <link rel="stylesheet" href="$css$">
+$endfor$
+$if(math)$
+  $math$
+$endif$
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+$for(header-includes)$
+  $header-includes$
+$endfor$
+</head>
+<body>
+$for(include-before)$
+$include-before$
+$endfor$
+$if(title)$
+<header>
+<h1 class="title">$title$</h1>
+$if(subtitle)$
+<p class="subtitle">$subtitle$</p>
+$endif$
+$for(author)$
+<p class="author">$author$</p>
+$endfor$
+$if(date)$
+<p class="date">$date$</p>
+$endif$
+</header>
+$endif$
+$if(toc)$
+<nav id="$idprefix$TOC">
+$toc$
+</nav>
+$endif$
+$body$
+$for(include-after)$
+$include-after$
+$endfor$
+</body>
+</html>
