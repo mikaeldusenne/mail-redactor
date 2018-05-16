@@ -1,5 +1,7 @@
 # Mail Redactor
 
+[asciinema](https://asciinema.org/a/181832)
+
 NB: This project is currently very dependent on my personal setup.
 
 This program takes as input the body of a mail written in (almost, cf below) markdown, and outputs a multipart-email containing the original text, the html pandoc-compiled text, and, when necessary, attachments to the mail.
@@ -12,6 +14,15 @@ If I enter the path to an existing file on a line, it adds it as an attachment t
 
 I did not perform extensive testing of the display of mails, but it should be mostly working. (the trickiest part is scrollable divs inside emails to display text files preview, this does not seem to be extremely well supported, but it works well with gmail!)
 
-![markdown](/data/screenshots/mail_markdown/?raw=true "Mail redaction from Emacs")
+**Here is an example of a mail as I write it in Emacs:**
+
+![markdown](/data/screenshots/mail_emacs.png/?raw=true "Mail redaction from Emacs")
+
+**And the resulting mail:**
 
 ![gmail](/data/screenshots/mail_output.gif/?raw=true "Result")
+
+Notice the smileys!
+
+The mail's plain text content is encoded following the [Quoted-Printable](https://en.wikipedia.org/wiki/Quoted-printable) specifications, the html part is in base64.
+
