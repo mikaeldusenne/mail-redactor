@@ -1,7 +1,12 @@
 # hello lol
+# Hello
 
-----
+:D :')
 
-§/home/mika/screenshots/λ.png
+/home/mika/Bookmarks/memoire_m2/R/results/epilepsy_regression.csv
 
-**this** _is_ *a* fucking te<br>st!
+| a | b | c |
+|:---|:---:|---:|
+|0.1164|92|ooodd|
+|0|92642|o|
+

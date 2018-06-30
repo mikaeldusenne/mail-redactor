@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell,LambdaCase #-}
 
 module Lib where
 -----------------------------IMPORTS---------------------------------
@@ -40,12 +40,14 @@ createMail ls = foldM f mempty ls
 
 runMail :: String -> IO Mail
 runMail str = do
-  ls <- lines <$> substitute_smileys str
+  -- ls <- lines <$> substitute_smileys str
+  ls <- mapM (\case l@('|':xs) -> return l
+                    l -> substitute_smileys l) $ lines str
   let template = $(embedStringFile "data/pandoc.html")
   over html (T.unpack . fromEither <$> compileHtml template) <$> createMail ls
 
-run :: String -> IO Element
-run str = do
+run :: Bool -> String -> IO Element
+run debug str = do
   let ftype = over (content'type . args) (M.insert "type" ("\"" ++ show HTML ++ "\""))
       onlyPlain = return
                   . Text (defaultUTF8ContentType {_CT=Plain})
@@ -56,17 +58,19 @@ run str = do
         alternative <- newMultipart Alternative
         related <- ftype <$> newMultipart Related
         mixed <- ftype <$> newMultipart Mixed
-  
-        (Mail{_plain=plaintext,
-              _html=htmltext,
-              _pj=pjmail}) <- over plain encode
-                              . over html (BSUTF8.toString
-                                           . Base64Strict.encode
-                                           . BSUTF8.fromString)
-                              <$> runMail str
+
+        mail <- runMail str
+        
+        let (Mail{_plain=plaintext,
+                  _html=htmltext,
+                  _pj=pjmail}) = over plain encode
+                                 . over html (BSUTF8.toString
+                                              . Base64Strict.encode
+                                              . BSUTF8.fromString)
+                                 $ mail
 
         -- b46_html <- encode_
-  
+        when debug $ print $ _html mail
         return $ alternative {_elemlist=
                               [Text (defaultUTF8ContentType {_CT=Plain}) plaintext
                               ,mixed {_elemlist=
